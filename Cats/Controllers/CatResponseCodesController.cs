@@ -1,5 +1,7 @@
 ﻿using System.Net;
+using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Cats.Controllers;
 
@@ -10,18 +12,27 @@ public class CatResponseCodesController : Controller
     [HttpGet]
     [Route("ProcessUrl")]
     [Obsolete("Obsolete")]
-    public string? ProcessUrl(string url)
+    public IActionResult ProcessUrl(string url)
     {
         var result = Uri.TryCreate(url, UriKind.Absolute, out var uriResult)
                      && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
-        if (!result) return "Fake link!";
+        if (!result)
+        {
+            return BadRequest();
+        }
+
         var request = (HttpWebRequest)WebRequest
             .Create(url);
         var response = (HttpWebResponse)request.GetResponse();
         var statusCode = Convert.ToString((int)response.StatusCode);
-        var catsRequest = (HttpWebRequest)WebRequest
-            .Create($"https://http.cat/{statusCode}.jpg");
-        var catsResponse = (HttpWebResponse)catsRequest.GetResponse();
-        return Convert.ToString(catsResponse.GetResponseStream());
+        
+        var appDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        var relativePath = @$"..\..\..\..\img\{statusCode}.png";
+        var fullPath = Path.Combine(appDir, relativePath);
+
+        WebClient Client = new WebClient();
+        Client.DownloadFile($"https://http.cat/{statusCode}.jpg", fullPath);
+        
+        return PhysicalFile(fullPath, "image/jpg");
     }
 }
