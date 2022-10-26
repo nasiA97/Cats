@@ -51,7 +51,7 @@ public class CatResponseCodesController : Controller
     [Route("CacheSet")]
     public void CacheSet(string httpCode, Task<FileStreamResult> img)
     {
-        _memoryCache.Set(httpCode, img, TimeSpan.FromSeconds(5));
+        _memoryCache.Set(httpCode, img, TimeSpan.FromSeconds(30));
     }
     
     [HttpGet]
@@ -73,10 +73,10 @@ public class CatResponseCodesController : Controller
     {
         var result = Uri.TryCreate(url, UriKind.Absolute, out var uriResult)
                      && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
-        // if (!result)
-        // {
-        //     return BadRequest();
-        // }
+        if (!result)
+        {
+            return CacheGet("404");
+        }
 
         var request = (HttpWebRequest)WebRequest
             .Create(url);
