@@ -1,5 +1,3 @@
-﻿using System.Net;
-using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -10,88 +8,69 @@ namespace Cats.Controllers;
 public class CatResponseCodesController : Controller
 {
     private IMemoryCache _memoryCache;
+    public static int _statusCode = 100;
+    static readonly HttpClient Client = new HttpClient();
 
     public CatResponseCodesController(IMemoryCache memoryCache)
     {
         _memoryCache = memoryCache;
     }
-    
-    [HttpGet]
-    [Route("testCacheGet")]
-    public string testCacheGet(string httpCode)
+
+    private async Task<byte[]> CacheGet(string url)
     {
-        if (_memoryCache.TryGetValue(httpCode, out string value))
+        if (_memoryCache.TryGetValue(url, out byte[] value))
         {
             return value;
         }
-        testCacheSet(httpCode, $"httpCode: {httpCode}");
-        return testCacheGet(httpCode);
+
+        CacheSet(url, await DownloadImage(url));
+        return await CacheGet(url);
     }
 
-    [HttpGet]
-    [Route("testCacheSet")]
-    public void testCacheSet(string httpCode, string description)
+    private async Task CacheSet(string url, byte[] img)
     {
-        _memoryCache.Set(httpCode, description, TimeSpan.FromSeconds(5));
+        await Task.Run(() => _memoryCache.Set(url, img, TimeSpan.FromSeconds(5)));
     }
 
-    [HttpGet]
-    [Route("CacheGet")]
-    public Task<FileStreamResult> CacheGet(string httpCode)
-    {
-        if (_memoryCache.TryGetValue(httpCode, out Task<FileStreamResult> value))
-        {
-            return value;
-        }
-        CacheSet(httpCode, DownloadImage($"https://http.cat/{httpCode}.jpg"));
-        return CacheGet(httpCode);
-    }
-
-    [HttpGet]
-    [Route("CacheSet")]
-    public void CacheSet(string httpCode, Task<FileStreamResult> img)
-    {
-        _memoryCache.Set(httpCode, img, TimeSpan.FromSeconds(30));
-    }
-    
-    [HttpGet]
-    [Route("DownloadImage")]
-    public async Task<FileStreamResult> DownloadImage(string url)
+    private async Task<byte[]> DownloadImage(string url)
     {
         var data = await new HttpClient().GetAsync(url);
-        var memoryStream = new MemoryStream();
-        await data.Content.CopyToAsync(memoryStream);
-        var contentType = "image/jpeg";
-        memoryStream.Seek(0, SeekOrigin.Begin);
-        return File(memoryStream, contentType);
+
+        byte[] image = await data.Content.ReadAsByteArrayAsync();
+
+        return image;
     }
 
     [HttpGet]
     [Route("ProcessUrl")]
-    [Obsolete("Obsolete")]
-    public Task<FileStreamResult> ProcessUrl(string url)
+    public async Task<FileContentResult> ProcessUrl(string url)
     {
         var result = Uri.TryCreate(url, UriKind.Absolute, out var uriResult)
                      && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
+
+        var contentType = "image/jpeg";
+
         if (!result)
         {
-            return CacheGet("404");
+            return File(
+                await CacheGet(
+                    "https://sun9-west.userapi.com/sun9-50/s/v1/ig2/WTB8jwFgUXDS2PPvsUfwkvz62QAjaYmpCx9rRjRg4szJI5V_w78MPC1AI4Z9q7YOCO4IgdrevptNjJy8GaAUo-DT.jpg?size=951x736&quality=96&type=album"),
+                contentType);
         }
 
-        var request = (HttpWebRequest)WebRequest
-            .Create(url);
-        var response = (HttpWebResponse)request.GetResponse();
-        var statusCode = Convert.ToString((int)response.StatusCode);
-        
-        return CacheGet(statusCode);
-        
-        // var appDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-        // var relativePath = @$"..\..\..\..\img\{statusCode}.png";
-        // var fullPath = Path.Combine(appDir, relativePath);
-        //
-        // WebClient Client = new WebClient();
-        // Client.DownloadFile($"https://http.cat/{statusCode}.jpg", fullPath);
-        //
-        // return PhysicalFile(fullPath, "image/jpg");
+        try
+        {
+            HttpResponseMessage response = await Client.GetAsync(url);
+            _statusCode = Convert.ToInt32(response.StatusCode);
+        }
+        catch
+        {
+            return File(
+                await CacheGet(
+                    "https://images-ext-1.discordapp.net/external/z0wgZbVvvfs8UDNLSyM_0mMsruP_VvMM0FJlmdvraCk/https/i11.fotocdn.net/s109/afa79a8bb26c8bc5/public_pin_m/2424279258.jpg%2522%29%29"),
+                contentType);
+        }
+
+        return File(await CacheGet($"https://http.cat/{_statusCode}.jpg"), contentType);
     }
 }
